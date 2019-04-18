@@ -50,7 +50,7 @@ namespace move_base {
     as_(NULL),
     planner_costmap_ros_(NULL), controller_costmap_ros_(NULL),
     bgp_loader_("nav_core", "nav_core::BaseGlobalPlanner"),
-    blp_loader_("nav_core", "nav_core::BaseLocalPlanner"), 
+    blp_loader_("nav_core", "nav_core::BaseLocalPlanner"),
     recovery_loader_("nav_core", "nav_core::RecoveryBehavior"),
     planner_plan_(NULL), latest_plan_(NULL), controller_plan_(NULL),
     runPlanner_(false), setup_(false), p_freq_change_(false), c_freq_change_(false), new_global_plan_(false) {
@@ -144,6 +144,24 @@ namespace move_base {
 
     //advertise a service for clearing the costmaps
     clear_costmaps_srv_ = private_nh.advertiseService("clear_costmaps", &MoveBase::clearCostmapsService, this);
+
+    // layers to clear in global costmap when a new goal is received
+    std::vector<std::string> clearable_layers_default = {"obstacle_layer"};
+    private_nh.param("clear_global_costmap_layers", clearable_layers_global_costmap_, clearable_layers_default);
+
+    //advertise a service for clearing the global obstacle costmaps
+    if (clearable_layers_global_costmap_.size() > 0)
+      clear_global_obstacle_costmap_srv_ = private_nh.advertiseService("clear_global_obstacle_costmap", &MoveBase::clearGlobalObstacleCostmapService, this);
+
+    // layers to clear in local costmap when a new goal is received
+    clearable_layers_default = {"obstacle_layer", "inflation_layer"};
+    private_nh.param("clear_local_costmap_layers", clearable_layers_local_costmap_, clearable_layers_default);
+
+    //advertise a service for clearing the local obstacle costmaps
+    if (clearable_layers_local_costmap_.size() > 0)
+      clear_local_obstacle_costmap_srv_ = private_nh.advertiseService("clear_local_obstacle_costmap", &MoveBase::clearLocalObstacleCostmapService, this);
+
+    private_nh.param("clear_costmaps_on_new_goal", clear_costmaps_on_new_goal_, false);
 
     //if we shutdown our costmaps when we're deactivated... we'll do that now
     if(shutdown_costmaps_){
@@ -325,7 +343,8 @@ namespace move_base {
     controller_costmap_ros_->getCostmap()->setConvexPolygonCost(clear_poly, costmap_2d::FREE_SPACE);
   }
 
-  bool MoveBase::clearCostmapsService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp){
+  bool MoveBase::clearCostmapsService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp)
+  {
     //clear the costmaps
     boost::unique_lock<costmap_2d::Costmap2D::mutex_t> lock_controller(*(controller_costmap_ros_->getCostmap()->getMutex()));
     controller_costmap_ros_->resetLayers();
@@ -335,6 +354,46 @@ namespace move_base {
     return true;
   }
 
+  void MoveBase::clearCostmapObstacleLayer(costmap_2d::Costmap2DROS* costmap, std::vector<std::string> layer_to_clear)
+  {
+    std::vector<boost::shared_ptr<costmap_2d::Layer> >* plugins = costmap->getLayeredCostmap()->getPlugins();
+
+    for (std::vector<boost::shared_ptr<costmap_2d::Layer> >::iterator pluginp = plugins->begin(); pluginp != plugins->end(); ++pluginp)
+    {
+      boost::shared_ptr<costmap_2d::Layer> plugin = *pluginp;
+      std::string name = plugin->getName();
+      int slash = name.rfind('/');
+      if( slash != std::string::npos ){
+          name = name.substr(slash+1);
+      }
+
+      std::vector<std::string>::iterator it = find(layer_to_clear.begin(), layer_to_clear.end(), name);
+      if (it != layer_to_clear.end())
+      {
+        ROS_DEBUG_STREAM("clearing layer --" << name << "--.");
+
+        boost::unique_lock<costmap_2d::Costmap2D::mutex_t> lock_planner(*(costmap->getCostmap()->getMutex()));
+        plugin->reset();
+      }
+    }
+
+    // update map once
+    costmap->updateMap();
+  }
+
+  bool MoveBase::clearGlobalObstacleCostmapService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp)
+  {
+    std::vector<std::string> layers = {"obstacle_layer"};
+    clearCostmapObstacleLayer(planner_costmap_ros_, layers);
+    return true;
+  }
+
+  bool MoveBase::clearLocalObstacleCostmapService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp)
+  {
+    std::vector<std::string> layers = {"obstacle_layer", "inflation_layer"};
+    clearCostmapObstacleLayer(controller_costmap_ros_, layers);
+    return true;
+  }
 
   bool MoveBase::planService(nav_msgs::GetPlan::Request &req, nav_msgs::GetPlan::Response &resp){
     if(as_->isActive()){
@@ -369,7 +428,7 @@ namespace move_base {
     //first try to make a plan to the exact desired goal
     std::vector<geometry_msgs::PoseStamped> global_plan;
     if(!planner_->makePlan(start, req.goal, global_plan) || global_plan.empty()){
-      ROS_DEBUG_NAMED("move_base","Failed to find a plan to exact goal of (%.2f, %.2f), searching for a feasible goal within tolerance", 
+      ROS_DEBUG_NAMED("move_base","Failed to find a plan to exact goal of (%.2f, %.2f), searching for a feasible goal within tolerance",
           req.goal.pose.position.x, req.goal.pose.position.y);
 
       //search outwards for a feasible goal within the specified tolerance
@@ -643,6 +702,12 @@ namespace move_base {
       return;
     }
 
+    if(clear_costmaps_on_new_goal_)
+    {
+      clearCostmapObstacleLayer(planner_costmap_ros_, clearable_layers_global_costmap_);
+      clearCostmapObstacleLayer(controller_costmap_ros_, clearable_layers_local_costmap_);
+    }
+
     geometry_msgs::PoseStamped goal = goalToGlobalFrame(move_base_goal->target_pose);
 
     //we have a goal so start the planner
@@ -686,6 +751,13 @@ namespace move_base {
           if(!isQuaternionValid(new_goal.target_pose.pose.orientation)){
             as_->setAborted(move_base_msgs::MoveBaseResult(), "Aborting on goal because it was sent with an invalid quaternion");
             return;
+          }
+
+          // clear costmaps once after receiveing new goal
+          if(clear_costmaps_on_new_goal_)
+          {
+            clearCostmapObstacleLayer(planner_costmap_ros_, clearable_layers_global_costmap_);
+            clearCostmapObstacleLayer(controller_costmap_ros_, clearable_layers_local_costmap_);
           }
 
           goal = goalToGlobalFrame(new_goal.target_pose);
@@ -809,7 +881,7 @@ namespace move_base {
       last_oscillation_reset_ = ros::Time::now();
       oscillation_pose_ = current_position;
 
-      //if our last recovery was caused by oscillation, we want to reset the recovery index 
+      //if our last recovery was caused by oscillation, we want to reset the recovery index
       if(recovery_trigger_ == OSCILLATION_R)
         recovery_index_ = 0;
     }
@@ -894,10 +966,10 @@ namespace move_base {
           state_ = CLEARING;
           recovery_trigger_ = OSCILLATION_R;
         }
-        
+
         {
          boost::unique_lock<costmap_2d::Costmap2D::mutex_t> lock(*(controller_costmap_ros_->getCostmap()->getMutex()));
-        
+
         if(tc_->computeVelocityCommands(cmd_vel)){
           ROS_DEBUG_NAMED( "move_base", "Got a valid command from the local planner: %.3lf, %.3lf, %.3lf",
                            cmd_vel.linear.x, cmd_vel.linear.y, cmd_vel.angular.z );
@@ -1010,7 +1082,7 @@ namespace move_base {
                     std::string name_i = behavior_list[i]["name"];
                     std::string name_j = behavior_list[j]["name"];
                     if(name_i == name_j){
-                      ROS_ERROR("A recovery behavior with the name %s already exists, this is not allowed. Using the default recovery behaviors instead.", 
+                      ROS_ERROR("A recovery behavior with the name %s already exists, this is not allowed. Using the default recovery behaviors instead.",
                           name_i.c_str());
                       return false;
                     }
@@ -1066,7 +1138,7 @@ namespace move_base {
         }
       }
       else{
-        ROS_ERROR("The recovery behavior specification must be a list, but is of XmlRpcType %d. We'll use the default recovery behaviors instead.", 
+        ROS_ERROR("The recovery behavior specification must be a list, but is of XmlRpcType %d. We'll use the default recovery behaviors instead.",
             behavior_list.getType());
         return false;
       }

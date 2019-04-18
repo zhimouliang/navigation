@@ -105,11 +105,16 @@ namespace move_base {
     private:
       /**
        * @brief  A service call that clears the costmaps of obstacles
-       * @param req The service request 
+       * @param req The service request
        * @param resp The service response
        * @return True if the service call succeeds, false otherwise
        */
       bool clearCostmapsService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
+
+      bool clearGlobalObstacleCostmapService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
+      bool clearLocalObstacleCostmapService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
+
+      void clearCostmapObstacleLayer(costmap_2d::Costmap2DROS* costmap, std::vector<std::string> layer_to_clear);
 
       /**
        * @brief  A service call that can be made when the action is inactive that will return a plan
@@ -129,7 +134,7 @@ namespace move_base {
 
       /**
        * @brief  Load the recovery behaviors for the navigation stack from the parameter server
-       * @param node The ros::NodeHandle to be used for loading parameters 
+       * @param node The ros::NodeHandle to be used for loading parameters
        * @return True if the recovery behaviors were loaded successfully, false otherwise
        */
       bool loadRecoveryBehaviors(ros::NodeHandle node);
@@ -195,8 +200,13 @@ namespace move_base {
       ros::Publisher current_goal_pub_, vel_pub_, action_goal_pub_;
       ros::Subscriber goal_sub_;
       ros::ServiceServer make_plan_srv_, clear_costmaps_srv_;
+      ros::ServiceServer clear_global_obstacle_costmap_srv_, clear_local_obstacle_costmap_srv_;
       bool shutdown_costmaps_, clearing_rotation_allowed_, recovery_behavior_enabled_;
       double oscillation_timeout_, oscillation_distance_;
+
+      bool clear_costmaps_on_new_goal_;
+      std::vector<std::string> clearable_layers_global_costmap_;
+      std::vector<std::string> clearable_layers_local_costmap_;
 
       MoveBaseState state_;
       RecoveryTrigger recovery_trigger_;
@@ -222,7 +232,7 @@ namespace move_base {
 
       boost::recursive_mutex configuration_mutex_;
       dynamic_reconfigure::Server<move_base::MoveBaseConfig> *dsrv_;
-      
+
       void reconfigureCB(move_base::MoveBaseConfig &config, uint32_t level);
 
       move_base::MoveBaseConfig last_config_;
