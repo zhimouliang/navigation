@@ -664,23 +664,28 @@ namespace move_base {
         ROS_DEBUG_NAMED("move_base_plan_thread","No Plan...");
         ros::Time attempt_end = last_valid_plan_ + ros::Duration(planner_patience_);
 
+        // if we still have a valid plan from previous planning, continue
+        if (!latest_plan_->empty())
+          state_ = CONTROLLING;
+
         //check if we've tried to make a plan for over our time limit or our maximum number of retries
         //issue #496: we stop planning when one of the conditions is true, but if max_planning_retries_
         //is negative (the default), it is just ignored and we have the same behavior as ever
-        lock.lock();
-        planning_retries_++;
-        if(runPlanner_ &&
-           (ros::Time::now() > attempt_end || planning_retries_ > uint32_t(max_planning_retries_))){
-          //we'll move into our obstacle clearing mode
-          state_ = CLEARING;
-          runPlanner_ = false;  // proper solution for issue #523
-          publishZeroVelocity();
-          recovery_trigger_ = PLANNING_R;
+        else
+        {
+          lock.lock();
+          planning_retries_++;
+          if(runPlanner_ &&
+             (ros::Time::now() > attempt_end || planning_retries_ > uint32_t(max_planning_retries_))){
+            //we'll move into our obstacle clearing mode
+            state_ = CLEARING;
+            runPlanner_ = false;  // proper solution for issue #523
+            publishZeroVelocity();
+            recovery_trigger_ = PLANNING_R;
+          }
+          lock.unlock();
         }
-
-        lock.unlock();
       }
-
       //take the mutex for the next iteration
       lock.lock();
 
@@ -975,6 +980,14 @@ namespace move_base {
                            cmd_vel.linear.x, cmd_vel.linear.y, cmd_vel.angular.z );
           last_valid_control_ = ros::Time::now();
           //make sure that we send the velocity command to the base
+
+          //check the velocity whether is 0, if then clear local cost_map
+          if (cmd_vel.linear.x == 0.0 && cmd_vel.linear.y == 0.0 && cmd_vel.angular.z == 0.0)
+          {
+            boost::unique_lock<costmap_2d::Costmap2D::mutex_t> lock_controller(*(controller_costmap_ros_->getCostmap()->getMutex()));
+            controller_costmap_ros_->resetLayers();
+          }
+
           vel_pub_.publish(cmd_vel);
           if(recovery_trigger_ == CONTROLLING_R)
             recovery_index_ = 0;
@@ -1038,19 +1051,25 @@ namespace move_base {
           ROS_DEBUG_NAMED("move_base_recovery","Something should abort after this.");
 
           if(recovery_trigger_ == CONTROLLING_R){
-            ROS_ERROR("Aborting because a valid control could not be found. Even after executing all recovery behaviors");
-            as_->setAborted(move_base_msgs::MoveBaseResult(), "Failed to find a valid control. Even after executing recovery behaviors.");
+            //ROS_ERROR("Aborting because a valid control could not be found. Even after executing all recovery behaviors");
+            ROS_ERROR("Trigger recovery again because a valid control could not be found. Even after executing all recovery behaviors");
+            recovery_index_ == 1;
+
           }
           else if(recovery_trigger_ == PLANNING_R){
-            ROS_ERROR("Aborting because a valid plan could not be found. Even after executing all recovery behaviors");
-            as_->setAborted(move_base_msgs::MoveBaseResult(), "Failed to find a valid plan. Even after executing recovery behaviors.");
+            //ROS_ERROR("Aborting because a valid plan could not be found. Even after executing all recovery behaviors");
+            ROS_ERROR("Trigger recovery again because a valid plan could not be found. Even after executing all recovery behaviors");
+            recovery_index_ == 1;
+            //as_->setAborted(move_base_msgs::MoveBaseResult(), "Failed to find a valid plan. Even after executing recovery behaviors.");
           }
           else if(recovery_trigger_ == OSCILLATION_R){
-            ROS_ERROR("Aborting because the robot appears to be oscillating over and over. Even after executing all recovery behaviors");
-            as_->setAborted(move_base_msgs::MoveBaseResult(), "Robot is oscillating. Even after executing recovery behaviors.");
+            //ROS_ERROR("Aborting because a valid plan could not be found. Even after executing all recovery behaviors");
+            //ROS_ERROR("Trigger recovery again because the robot appears to be oscillating over and over. Even after executing all recovery behaviors");
+            recovery_index_ == 1;
+            //as_->setAborted(move_base_msgs::MoveBaseResult(), "Robot is oscillating. Even after executing recovery behaviors.");
           }
           resetState();
-          return true;
+          //return true;
         }
         break;
       default:
