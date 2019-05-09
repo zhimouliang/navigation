@@ -598,7 +598,7 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
   }
   else if(laser_model_type_ == LASER_MODEL_LIKELIHOOD_FIELD){
     ROS_INFO("Initializing likelihood field model; this can take some time on large maps...");
-    laser_->SetModelLikelihoodField(z_hit_, z_rand_, sigma_hit_,
+    laser_->SetModelLikelihoodField(z_hit_, z_rand_, z_short_, sigma_hit_,
                                     laser_likelihood_max_dist_);
     ROS_INFO("Done initializing likelihood field model.");
   }
@@ -890,7 +890,7 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
   else
   {
     ROS_INFO("Initializing likelihood field model; this can take some time on large maps...");
-    laser_->SetModelLikelihoodField(z_hit_, z_rand_, sigma_hit_,
+    laser_->SetModelLikelihoodField(z_hit_, z_rand_, z_short_, sigma_hit_,
                                     laser_likelihood_max_dist_);
     ROS_INFO("Done initializing likelihood field model.");
   }
@@ -1140,11 +1140,11 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     end_time = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> diff = end_time - start_time;
 
-    if (static_cast<double>(diff.count()) > 10.0)
+    if (static_cast<double>(diff.count()) > 60.0)
     {
       std::cout << "timeout force update!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << std::endl;
       timeout_force_update = true;
-      timeout_update_counter = 10;
+      timeout_update_counter = 1;
     }
     update = update || m_force_update || timeout_force_update;
     m_force_update=false;
