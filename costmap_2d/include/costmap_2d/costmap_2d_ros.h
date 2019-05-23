@@ -47,6 +47,7 @@
 #include <geometry_msgs/PolygonStamped.h>
 #include <dynamic_reconfigure/server.h>
 #include <pluginlib/class_loader.h>
+#include <std_srvs/Empty.h>
 
 class SuperValue : public XmlRpc::XmlRpcValue
 {
@@ -252,6 +253,11 @@ private:
   std::vector<geometry_msgs::Point> padded_footprint_;
   float footprint_padding_;
   costmap_2d::Costmap2DConfig old_config_;
+
+  std::vector<std::string> clearable_layers_costmap_;
+  ros::ServiceServer clear_costmap_layers_srv_;
+  bool clearCostmapLayersService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
+  void clearCostmapLayers(std::vector<std::string> layer_to_clear);
 };
 // class Costmap2DROS
 }  // namespace costmap_2d

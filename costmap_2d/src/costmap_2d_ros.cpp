@@ -163,6 +163,15 @@ Costmap2DROS::Costmap2DROS(std::string name, tf::TransformListener& tf) :
 
   setUnpaddedRobotFootprint(makeFootprintFromParams(private_nh));
 
+  // layers to clear in global costmap when a new goal is received
+  std::vector<std::string> clearable_layers_default = {"obstacle_layer"};
+  private_nh.param("clear_costmap_layers", clearable_layers_costmap_, clearable_layers_default);
+
+  //advertise a service for clearing the global obstacle costmaps
+  if (clearable_layers_costmap_.size() > 0)
+    clear_costmap_layers_srv_ = private_nh.advertiseService("clear_costmap_layers", &Costmap2DROS::clearCostmapLayersService, this);
+
+
   publisher_ = new Costmap2DPublisher(&private_nh, layered_costmap_->getCostmap(), global_frame_, "costmap",
                                       always_send_full_costmap);
 
@@ -179,6 +188,40 @@ Costmap2DROS::Costmap2DROS(std::string name, tf::TransformListener& tf) :
   dynamic_reconfigure::Server<Costmap2DConfig>::CallbackType cb = boost::bind(&Costmap2DROS::reconfigureCB, this, _1,
                                                                               _2);
   dsrv_->setCallback(cb);
+}
+
+bool Costmap2DROS::clearCostmapLayersService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp)
+{
+  std::vector<std::string> layers = clearable_layers_costmap_;
+  clearCostmapLayers(layers);
+  return true;
+}
+
+void Costmap2DROS::clearCostmapLayers(std::vector<std::string> layer_to_clear)
+{
+  std::vector<boost::shared_ptr<costmap_2d::Layer> >* plugins = this->getLayeredCostmap()->getPlugins();
+
+  for (std::vector<boost::shared_ptr<costmap_2d::Layer> >::iterator pluginp = plugins->begin(); pluginp != plugins->end(); ++pluginp)
+  {
+    boost::shared_ptr<costmap_2d::Layer> plugin = *pluginp;
+    std::string name = plugin->getName();
+    int slash = name.rfind('/');
+    if( slash != std::string::npos ){
+        name = name.substr(slash+1);
+    }
+
+    std::vector<std::string>::iterator it = find(layer_to_clear.begin(), layer_to_clear.end(), name);
+    if (it != layer_to_clear.end())
+    {
+      ROS_DEBUG_STREAM("clearing layer --" << name << "--.");
+
+      boost::unique_lock<costmap_2d::Costmap2D::mutex_t> lock_costmap(*(this->getCostmap()->getMutex()));
+      plugin->reset();
+    }
+  }
+
+  // update map once
+  this->updateMap();
 }
 
 void Costmap2DROS::setUnpaddedRobotFootprintPolygon(const geometry_msgs::Polygon& footprint)
