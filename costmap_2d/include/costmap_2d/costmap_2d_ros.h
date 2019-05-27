@@ -258,6 +258,9 @@ private:
   ros::ServiceServer clear_costmap_layers_srv_;
   bool clearCostmapLayersService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
   void clearCostmapLayers(std::vector<std::string> layer_to_clear);
+
+public:
+  void clearCostmapLayers();
 };
 // class Costmap2DROS
 }  // namespace costmap_2d
