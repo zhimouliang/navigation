@@ -192,9 +192,11 @@ Costmap2DROS::Costmap2DROS(std::string name, tf::TransformListener& tf) :
 
 bool Costmap2DROS::clearCostmapLayersService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp)
 {
-  std::cout << "1clearCostmapLayersService" << std::endl;
-  std::vector<std::string> layers = clearable_layers_costmap_;
-  clearCostmapLayers(layers);
+  std::cout << "clearCostmapLayersService" << std::endl;
+
+  // lock here since clearCostmapLayers() doesn't lock
+  boost::unique_lock<costmap_2d::Costmap2D::mutex_t> lock_costmap(*(this->getCostmap()->getMutex()));
+  clearCostmapLayers(clearable_layers_costmap_);
   return true;
 }
 
@@ -205,11 +207,10 @@ void Costmap2DROS::clearCostmapLayers()
 
 void Costmap2DROS::clearCostmapLayers(std::vector<std::string> layer_to_clear)
 {
-  std::cout << "2clearCostmapLayers" << std::endl;
   std::vector<boost::shared_ptr<costmap_2d::Layer> >* plugins = this->getLayeredCostmap()->getPlugins();
 
 {
-      boost::unique_lock<costmap_2d::Costmap2D::mutex_t> lock_costmap(*(this->getCostmap()->getMutex()));
+  // don't lock inside in case some lock outside!
   for (std::vector<boost::shared_ptr<costmap_2d::Layer> >::iterator pluginp = plugins->begin(); pluginp != plugins->end(); ++pluginp)
   {
     boost::shared_ptr<costmap_2d::Layer> plugin = *pluginp;
@@ -222,13 +223,8 @@ void Costmap2DROS::clearCostmapLayers(std::vector<std::string> layer_to_clear)
     std::vector<std::string>::iterator it = find(layer_to_clear.begin(), layer_to_clear.end(), name);
     if (it != layer_to_clear.end())
     {
-      ROS_INFO_STREAM("clearing layer --" << name << "--.");
-
-
-  std::cout << "3 before clear" << std::endl;
       plugin->reset();
-  std::cout << "4 after clear" << std::endl;
-
+      ROS_INFO_STREAM("cleared layer --" << name << "--.");
     }
   }
 }
