@@ -34,6 +34,9 @@
 
 #include "amcl/sensors/amcl_odom.h"
 
+#include "ros/assert.h"
+#include <assert.h>
+
 using namespace amcl;
 
 static double
@@ -158,7 +161,7 @@ bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
                             delta_strafe_hat * sn_bearing);
       sample->pose.v[1] += (delta_trans_hat * sn_bearing -
                             delta_strafe_hat * cs_bearing);
-      sample->pose.v[2] += delta_rot_hat ;
+      sample->pose.v[2] += delta_rot_hat;
     }
   }
   break;
@@ -292,6 +295,13 @@ bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
     {
       pf_sample_t* sample = set->samples + i;
 
+      // if (i==0){
+
+      //   ROS_INFO_STREAM("initial" <<
+      //   "\nsample->pose.v[0]: " << sample->pose.v[0] <<
+      //   "\nsample->pose.v[1]: " << sample->pose.v[1] <<
+      //   "\nsample->pose.v[2]: " << sample->pose.v[2]);
+      // }
       // Sample pose differences
       delta_rot1_hat = angle_diff(delta_rot1,
                                   pf_ran_gaussian(sqrt(this->alpha1*delta_rot1_noise*delta_rot1_noise +
@@ -304,12 +314,39 @@ bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
                                   pf_ran_gaussian(sqrt(this->alpha1*delta_rot2_noise*delta_rot2_noise +
                                                        this->alpha2*delta_trans*delta_trans)));
 
+      // if (i==0){
+      //   ROS_INFO_STREAM("delta_trans_hat*cos(sample->pose.v[2] + delta_rot1_hat): " << delta_trans_hat*cos(sample->pose.v[2] + delta_rot1_hat) <<
+      //         "\ndelta_trans_hat*sin(sample->pose.v[2] + delta_rot1_hat): " << delta_trans_hat*sin(sample->pose.v[2] + delta_rot1_hat));
+
+      //   ROS_INFO_STREAM("delta_rot1: " << delta_rot1 <<
+      //   "\ndelta_rot2: " << delta_rot2 <<
+      //   "\ndelta_rot1_hat: " << delta_rot1_hat <<
+      //   "\ndelta_trans_hat: " << delta_trans_hat <<
+      //   "\ndelta_trans:" << delta_trans <<
+      //   "\ndelta_rot2_hat: " << delta_rot2_hat <<
+      //   "\ndelta_rot1_noise: " << delta_rot1_noise <<
+      //   "\ndelta_rot2_noise: " << delta_rot2_noise <<
+      //   "\nsample->pose.v[0]: " << sample->pose.v[0] <<
+      //   "\nsample->pose.v[1]: " << sample->pose.v[1] <<
+      //   "\nsample->pose.v[2]: " << sample->pose.v[2] <<
+      //   "\ncos(sample->pose.v[2] + delta_rot1_hat): " << cos(sample->pose.v[2] + delta_rot1_hat) <<
+      //   "\nsin(sample->pose.v[2] + delta_rot1_hat): " << sin(sample->pose.v[2] + delta_rot1_hat));
+      // }
       // Apply sampled update to particle pose
       sample->pose.v[0] += delta_trans_hat *
               cos(sample->pose.v[2] + delta_rot1_hat);
       sample->pose.v[1] += delta_trans_hat *
               sin(sample->pose.v[2] + delta_rot1_hat);
       sample->pose.v[2] += delta_rot1_hat + delta_rot2_hat;
+
+      // if (i==0){
+
+      //   ROS_INFO_STREAM("After" <<
+      //   "\nsample->pose.v[0]: " << sample->pose.v[0] <<
+      //   "\nsample->pose.v[1]: " << sample->pose.v[1] <<
+      //   "\nsample->pose.v[2]: " << sample->pose.v[2] <<
+      //   "\nsample->weight: " << sample->weight);
+      // }
     }
   }
   break;

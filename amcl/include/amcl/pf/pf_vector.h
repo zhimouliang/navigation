@@ -33,7 +33,7 @@ extern "C" {
 #endif
 
 #include <stdio.h>
-  
+
 // The basic vector
 typedef struct
 {

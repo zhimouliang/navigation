@@ -69,6 +69,8 @@
 // for high_resolution_clock
 #include <chrono>
 
+// #include <assert.h>
+
 #define NEW_UNIFORM_SAMPLING 1
 
 using namespace amcl;
@@ -1120,7 +1122,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     ROS_ERROR("Couldn't determine robot's pose associated with laser scan");
     return;
   }
-
+  // ROS_INFO_STREAM("pose.v[0]: " << pose.v[0] << "\tpose.v[1]: " << pose.v[1] << "\tpose.v[2]: " << pose.v[2]);
 
   pf_vector_t delta = pf_vector_zero();
 
@@ -1132,6 +1134,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     delta.v[1] = pose.v[1] - pf_odom_pose_.v[1];
     delta.v[2] = angle_diff(pose.v[2], pf_odom_pose_.v[2]);
 
+    // ROS_INFO_STREAM("delta.v[0]: " << delta.v[0] << "\tdelta.v[1]: " << delta.v[1] << "\tdelta.v[2]: " << delta.v[2]);
+
     // See if we should update the filter
     bool update = fabs(delta.v[0]) > d_thresh_ ||
                   fabs(delta.v[1]) > d_thresh_ ||
@@ -1140,10 +1144,10 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     end_time = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> diff = end_time - start_time;
 
-    if (static_cast<double>(diff.count()) > 2.0)
+    if (static_cast<double>(diff.count()) > 1.0)
     {
       timeout_force_update = true;
-      timeout_update_counter = 3;
+      timeout_update_counter = 1;
     }
     update = update || m_force_update || timeout_force_update;
     m_force_update=false;
@@ -1378,6 +1382,10 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
          }
        */
 
+      // assert(std::isfinite(p.pose.pose.position.x));
+      // assert(std::isfinite(p.pose.pose.position.y));
+      // assert(std::isfinite(p.pose.pose.position.z));
+      // exit(-1);
       pose_pub_.publish(p);
       // time since last publish of amcl_pose
       start_time = std::chrono::high_resolution_clock::now();
@@ -1532,14 +1540,20 @@ AmclNode::handleInitialPoseMessage(const geometry_msgs::PoseWithCovarianceStampe
   pf_init_pose_mean.v[1] = pose_new.getOrigin().y();
   pf_init_pose_mean.v[2] = getYaw(pose_new);
   pf_matrix_t pf_init_pose_cov = pf_matrix_zero();
+
+
+
   // Copy in the covariance, converting from 6-D to 3-D
+  std::cout << "set pose covar: ";
   for(int i=0; i<2; i++)
   {
     for(int j=0; j<2; j++)
     {
       pf_init_pose_cov.m[i][j] = msg.pose.covariance[6*i+j];
+      std::cout << pf_init_pose_cov.m[i][j] << " ";
     }
   }
+  std::cout << std::endl;
   pf_init_pose_cov.m[2][2] = msg.pose.covariance[6*5+5];
 
   delete initial_pose_hyp_;
