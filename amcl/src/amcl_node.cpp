@@ -69,8 +69,6 @@
 // for high_resolution_clock
 #include <chrono>
 
-// #include <assert.h>
-
 #define NEW_UNIFORM_SAMPLING 1
 
 using namespace amcl;
@@ -600,7 +598,7 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
   }
   else if(laser_model_type_ == LASER_MODEL_LIKELIHOOD_FIELD){
     ROS_INFO("Initializing likelihood field model; this can take some time on large maps...");
-    laser_->SetModelLikelihoodField(z_hit_, z_rand_, sigma_hit_,
+    laser_->SetModelLikelihoodField(z_hit_, z_rand_, z_short_, sigma_hit_,
                                     laser_likelihood_max_dist_);
     ROS_INFO("Done initializing likelihood field model.");
   }
@@ -892,7 +890,7 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
   else
   {
     ROS_INFO("Initializing likelihood field model; this can take some time on large maps...");
-    laser_->SetModelLikelihoodField(z_hit_, z_rand_, sigma_hit_,
+    laser_->SetModelLikelihoodField(z_hit_, z_rand_, z_short_, sigma_hit_,
                                     laser_likelihood_max_dist_);
     ROS_INFO("Done initializing likelihood field model.");
   }

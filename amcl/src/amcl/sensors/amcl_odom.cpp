@@ -29,6 +29,7 @@
 
 #include <algorithm>
 
+#include <iostream>
 #include <sys/types.h> // required by Darwin
 #include <math.h>
 
